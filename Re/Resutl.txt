@@ -1,0 +1,65 @@
+Baseline
+AVERAGE PERFORMANCE ACROSS 5 FOLDS
+============================================================
+Micro Precision: 0.9414 ± 0.0100
+Macro Precision: 0.8846 ± 0.0278
+Micro Recall:    0.9414 ± 0.0100
+Macro Recall:    0.7672 ± 0.0421
+Micro F1:        0.9414 ± 0.0100
+Macro F1:        0.8170 ± 0.0346
+
+
+Fold 1/5
+------------------------------------------------------------
+Micro Precision: 0.9342
+Macro Precision: 0.8665
+Micro Recall:    0.9342
+Macro Recall:    0.7392
+Micro F1:        0.9342
+Macro F1:        0.7930
+
+Fold 2/5
+------------------------------------------------------------
+Micro Precision: 0.9477
+Macro Precision: 0.9296
+Micro Recall:    0.9477
+Macro Recall:    0.7936
+Micro F1:        0.9477
+Macro F1:        0.8486
+
+Fold 3/5
+------------------------------------------------------------
+Micro Precision: 0.9326
+Macro Precision: 0.8525
+Micro Recall:    0.9326
+Macro Recall:    0.7296
+Micro F1:        0.9326
+Macro F1:        0.7808
+
+Fold 4/5
+------------------------------------------------------------
+Micro Precision: 0.9341
+Macro Precision: 0.8718
+Micro Recall:    0.9341
+Macro Recall:    0.7360
+Micro F1:        0.9341
+Macro F1:        0.7945
+
+Fold 5/5
+------------------------------------------------------------
+Micro Precision: 0.9581
+Macro Precision: 0.9027
+Micro Recall:    0.9581
+Macro Recall:    0.8378
+Micro F1:        0.9581
+Macro F1:        0.8678
+
+============================================================
+AVERAGE PERFORMANCE ACROSS 5 FOLDS
+============================================================
+Micro Precision: 0.9414 ± 0.0100
+Macro Precision: 0.8846 ± 0.0278
+Micro Recall:    0.9414 ± 0.0100
+Macro Recall:    0.7672 ± 0.0421
+Micro F1:        0.9414 ± 0.0100
+Macro F1:        0.8170 ± 0.0346
