@@ -107,3 +107,85 @@ def preprocess_provedit_comprehensive(file_path, threshold=50, stutter_ratio=0.1
     final_df['target_noc'] = final_df['Sample File'].apply(extract_noc)
 
     return final_df
+
+import pandas as pd
+import numpy as np
+import re
+
+def preprocess_for_cnn(file_path, threshold=50, max_alleles=35):
+    """
+    Preprocessing optimized for CNN models.
+    Converts DNA profiles into a 2D matrix (Image-like) of shape (Markers, Bins).
+    """
+    
+    # 1. LOAD AND INITIAL CLEANING (Same as XGBoost logic)
+    print(f"Processing for CNN: {file_path}")
+    df = pd.read_csv(file_path, low_memory=False)
+    
+    id_vars = ['Sample File', 'Marker', 'Dye']
+    triplet_cols = [col for col in df.columns if any(x in col for x in ['Allele', 'Size', 'Height'])]
+    
+    long_df = pd.melt(df, id_vars=id_vars, value_vars=triplet_cols, var_name='temp', value_name='Value')
+    long_df[['Attribute', 'Peak_Num']] = long_df['temp'].str.extract(r'([a-zA-Z]+)\s*(\d+)')
+    
+    df_peaks = long_df.pivot_table(index=id_vars + ['Peak_Num'], columns='Attribute', values='Value', aggfunc='first').reset_index()
+    
+    df_peaks['Height'] = pd.to_numeric(df_peaks['Height'], errors='coerce')
+    df_peaks['Allele'] = df_peaks['Allele'].astype(str).str.strip()
+    
+    df_peaks = df_peaks.dropna(subset=['Allele', 'Height'])
+    df_peaks = df_peaks[(df_peaks['Height'] >= threshold) & (df_peaks['Allele'] != 'OL')].copy()
+
+    # 2. STANDARDIZING THE BINS
+    # For a CNN, every 'image' must be the same size. 
+    # We map Allele IDs to fixed integer bins (e.g., bin 0 to bin 35).
+    def map_to_bin(allele_str):
+        try:
+            # Handle microvariants (9.3 -> 9.3)
+            val = float(allele_str)
+            # Map common alleles to a range (shifted for alignment)
+            # You can customize this range based on your kit (e.g., 5 to 40)
+            return int(round(val * 2)) # Multiplying by 2 handles .5/microvariants better
+        except:
+            if 'X' in allele_str: return 1
+            if 'Y' in allele_str: return 2
+            return 0
+
+    df_peaks['Bin'] = df_peaks['Allele'].apply(map_to_bin)
+    
+    # 3. PIVOT TO 2D GRID (Markers x Bins)
+    # We use Log-Scaling for heights to normalize intensity for the CNN
+    df_peaks['LogHeight'] = np.log1p(df_peaks['Height'])
+
+    # Create a 3D Tensor structure: (Samples, Markers, Bins)
+    # For simplicity, we create a pivot where each row is a Sample-Marker pair
+    cnn_matrix = df_peaks.pivot_table(index=['Sample File', 'Marker'], 
+                                    columns='Bin', 
+                                    values='LogHeight', 
+                                    fill_value=0)
+
+    # 4. ENSURE FIXED DIMENSIONS
+    # Ensure every marker has exactly 'max_alleles' bins
+    all_bins = list(range(max_alleles))
+    for b in all_bins:
+        if b not in cnn_matrix.columns:
+            cnn_matrix[b] = 0.0
+    
+    cnn_matrix = cnn_matrix[all_bins] # Reorder columns to be sequential
+    
+    # 5. TARGET EXTRACTION (NOC)
+    def extract_noc(filename):
+        match = re.search(r'RD\d+-\d+-([\d_]+)-', filename)
+        if match:
+            return len(match.group(1).split('_'))
+        parts = filename.split('-')
+        if len(parts) > 2:
+            return len(parts[2].split('_'))
+        return 1
+
+    # Flatten the matrix for export, but keep it structured so the CNN can reshape it
+    # Format: Sample_File, Marker, Bin_0, Bin_1 ... Bin_N, target_noc
+    final_df = cnn_matrix.reset_index()
+    final_df['target_noc'] = final_df['Sample File'].apply(extract_noc)
+
+    return final_df
