@@ -4,10 +4,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import StratifiedKFold, train_test_split
 from sklearn.metrics import precision_score, recall_score, f1_score
 from sklearn.preprocessing import StandardScaler
 from config import COMBINE_PREPROCESSED_CNN_PATH
+import copy
 
 class CNN1D(nn.Module):
     """1D CNN for tabular data classification"""
@@ -128,24 +129,32 @@ def evaluate_model():
     print("Starting 5-fold cross-validation...")
     print("=" * 60)
 
-    for fold, (train_idx, val_idx) in enumerate(skf.split(X, y), 1):
+    for fold, (train_idx, test_idx) in enumerate(skf.split(X, y), 1):
         print(f"\nFold {fold}/5")
         print("-" * 60)
 
-        # Split data
-        X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
-        y_train, y_val = y.iloc[train_idx], y.iloc[val_idx]
+        # Split data into train and test
+        X_train_full, X_test = X.iloc[train_idx], X.iloc[test_idx]
+        y_train_full, y_test = y.iloc[train_idx], y.iloc[test_idx]
+
+        # Further split train into train (90%) and validation (10%) for early stopping
+        X_train, X_val, y_train, y_val = train_test_split(
+            X_train_full, y_train_full, test_size=0.1, random_state=42, stratify=y_train_full
+        )
 
         # Standardize features
         scaler = StandardScaler()
         X_train_scaled = scaler.fit_transform(X_train)
         X_val_scaled = scaler.transform(X_val)
+        X_test_scaled = scaler.transform(X_test)
 
         # Convert to PyTorch tensors
         X_train_tensor = torch.FloatTensor(X_train_scaled)
         y_train_tensor = torch.LongTensor(y_train.values)
         X_val_tensor = torch.FloatTensor(X_val_scaled)
         y_val_tensor = torch.LongTensor(y_val.values)
+        X_test_tensor = torch.FloatTensor(X_test_scaled)
+        y_test_tensor = torch.LongTensor(y_test.values)
 
         # Create data loaders
         train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
@@ -153,6 +162,9 @@ def evaluate_model():
 
         val_dataset = TensorDataset(X_val_tensor, y_val_tensor)
         val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+
+        test_dataset = TensorDataset(X_test_tensor, y_test_tensor)
+        test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
         # Initialize model
         input_dim = X_train.shape[1]
@@ -162,15 +174,41 @@ def evaluate_model():
         criterion = nn.CrossEntropyLoss()
         optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-        # Training loop
-        num_epochs = 50
+        # Training loop with early stopping
+        num_epochs = 200
+        patience = 20
+        best_f1 = 0.0
+        patience_counter = 0
+        best_model_state = None
+
         for epoch in range(num_epochs):
             train_loss = train_epoch(model, train_loader, criterion, optimizer, device)
-            if (epoch + 1) % 10 == 0:
-                print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {train_loss:.4f}")
 
-        # Evaluate
-        y_true, y_pred = evaluate(model, val_loader, device)
+            # Evaluate on validation set
+            y_val_true, y_val_pred = evaluate(model, val_loader, device)
+            val_f1 = f1_score(y_val_true, y_val_pred, average='macro')
+
+            if (epoch + 1) % 10 == 0:
+                print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {train_loss:.4f}, Val Macro F1: {val_f1:.4f}")
+
+            # Early stopping check
+            if val_f1 > best_f1:
+                best_f1 = val_f1
+                patience_counter = 0
+                best_model_state = copy.deepcopy(model.state_dict())
+            else:
+                patience_counter += 1
+
+            if patience_counter >= patience:
+                print(f"Early stopping at epoch {epoch+1}, Best Val Macro F1: {best_f1:.4f}")
+                break
+
+        # Load best model
+        if best_model_state is not None:
+            model.load_state_dict(best_model_state)
+
+        # Evaluate on test set
+        y_true, y_pred = evaluate(model, test_loader, device)
 
         # Calculate metrics
         micro_prec = precision_score(y_true, y_pred, average='micro')
